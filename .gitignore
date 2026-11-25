@@ -1,0 +1,22 @@
+# Python environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Generated reports
+reports/
+
+# Secrets
+.env
+.streamlit/secrets.toml
+
+# VS Code
+.vscode/
+
+# System files
+.DS_Store
+Thumbs.db
