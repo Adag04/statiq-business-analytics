@@ -4,6 +4,12 @@ A Python project that helps analyse business data and generate reports automatic
 
 I built StatIQ to make the process of analysing sales data and preparing Excel reports easier. Instead of manually calculating everything, users can upload their CSV or Excel files, view important business metrics on a dashboard, and download an automatically generated Excel report.
 
+## GitHub Repository
+
+Check out the source code here:
+
+[StatIQ – GitHub Repository](https://github.com/Adag04/statiq-business-analytics)
+
 ## What it does
 
 - Upload CSV and Excel files.
@@ -42,13 +48,13 @@ StatIQ/
 **1. Clone the repository**
 
 ```bash
-git clone YOUR_GITHUB_REPOSITORY_URL
+git clone https://github.com/Adag04/statiq-business-analytics
 ```
 
 **2. Open the project folder**
 
 ```bash
-cd YOUR_PROJECT_FOLDER
+cd AutomatedReportingSystem
 ```
 
 **3. Create a virtual environment**
