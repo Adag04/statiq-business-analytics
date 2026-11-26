@@ -32,6 +32,276 @@ OPTIONAL_COLUMNS = [
 
 
 # --------------------------------------------------
+# UNIVERSAL COLUMN DETECTION
+# --------------------------------------------------
+
+
+COLUMN_ALIASES = {
+
+    # Sales and business fields
+    "order_id": [
+        "order_id", "order_number", "orderid",
+        "invoice_id", "invoice_no", "transaction_id"
+    ],
+
+    "order_date": [
+        "order_date", "date", "purchase_date",
+        "invoice_date", "transaction_date"
+    ],
+
+    "product": [
+        "product", "product_name", "item",
+        "item_name", "product_title"
+    ],
+
+    "quantity": [
+        "quantity", "qty", "units",
+        "units_sold", "quantity_sold"
+    ],
+
+    "unit_price": [
+        "unit_price", "price", "selling_price",
+        "unit_cost_price"
+    ],
+
+    "unit_cost": [
+        "unit_cost", "cost", "cost_price",
+        "purchase_price"
+    ],
+
+    "revenue": [
+        "revenue", "sales", "total_sales",
+        "total_revenue", "amount"
+    ],
+
+    "profit": [
+        "profit", "net_profit", "gross_profit"
+    ],
+
+    "category": [
+        "category", "product_category",
+        "item_category", "department"
+    ],
+
+    "region": [
+        "region", "sales_region", "area",
+        "location", "territory", "country"
+    ],
+
+    "sales_rep": [
+        "sales_rep", "salesperson",
+        "sales_person", "representative"
+    ],
+
+    "customer": [
+        "customer", "customer_name",
+        "client", "client_name"
+    ]
+}
+
+
+def normalize_column_name(column_name):
+
+    return (
+        str(column_name)
+        .strip()
+        .lower()
+        .replace(" ", "_")
+        .replace("-", "_")
+    )
+
+
+def detect_column_mapping(df):
+
+    detected_mapping = {}
+
+    normalized_columns = {
+        normalize_column_name(col): col
+        for col in df.columns
+    }
+
+    for standard_name, aliases in COLUMN_ALIASES.items():
+
+        for alias in aliases:
+
+            if alias in normalized_columns:
+
+                detected_mapping[standard_name] = (
+                    normalized_columns[alias]
+                )
+
+                break
+
+    return detected_mapping
+
+
+
+def show_column_mapping(df):
+
+    st.subheader("Sales Column Mapping")
+
+    st.write(
+        "Review automatically detected columns "
+        "and correct them if required."
+    )
+
+    detected_mapping = detect_column_mapping(df)
+
+    column_mapping = {}
+
+    options = ["Not mapped"] + df.columns.tolist()
+
+    sales_fields = [
+        "order_id", "order_date", "product",
+        "quantity", "unit_price", "unit_cost",
+        "revenue", "profit", "category",
+        "region", "sales_rep", "customer"
+    ]
+
+    for field in sales_fields:
+
+        detected_column = detected_mapping.get(field)
+
+        default_index = (
+            options.index(detected_column)
+            if detected_column in options else 0
+        )
+
+        selected_column = st.selectbox(
+            field.replace("_", " ").title(),
+            options=options,
+            index=default_index,
+            key=f"mapping_{field}"
+        )
+
+        if selected_column != "Not mapped":
+            column_mapping[field] = selected_column
+
+    return column_mapping
+
+
+
+def apply_column_mapping(df, column_mapping):
+
+    df = df.copy()
+
+    rename_mapping = {}
+
+    for standard_name, original_name in column_mapping.items():
+
+        if original_name in df.columns:
+            if original_name != standard_name:
+                rename_mapping[original_name] = standard_name
+
+    df = df.rename(columns=rename_mapping)
+
+    return df
+
+
+
+def detect_dataset_type(df):
+
+    columns = set(
+        normalize_column_name(col)
+        for col in df.columns
+    )
+
+    sales_signature = {
+        "revenue", "sales", "order_id",
+        "product", "quantity", "unit_price"
+    }
+
+    matched_columns = columns.intersection(sales_signature)
+
+    sales_score = len(matched_columns)
+
+    scores = {
+        "Sales": sales_score
+    }
+
+    if sales_score < 2:
+        return "General", scores
+
+    return "Sales", scores
+
+
+def generate_dataset_profile(df):
+
+    profile = {}
+
+    # Basic dataset information
+    profile["total_rows"] = len(df)
+    profile["total_columns"] = len(df.columns)
+    profile["duplicate_rows"] = int(df.duplicated().sum())
+    profile["missing_cells"] = int(df.isnull().sum().sum())
+
+    # Identify numeric columns
+    numeric_columns = df.select_dtypes(
+        include="number"
+    ).columns.tolist()
+
+    # Identify date columns
+    date_columns = []
+
+    for column in df.columns:
+
+        column_name = normalize_column_name(column)
+
+        if any(word in column_name for word in [
+            "date", "time", "timestamp"
+        ]):
+            date_columns.append(column)
+
+    # Identify categorical columns
+    categorical_columns = df.select_dtypes(
+        include=["object", "category", "bool"]
+    ).columns.tolist()
+
+    categorical_columns = [
+        col for col in categorical_columns
+        if col not in date_columns
+    ]
+
+    # Store column information
+    profile["numeric_columns"] = numeric_columns
+    profile["categorical_columns"] = categorical_columns
+    profile["date_columns"] = date_columns
+
+    # Missing values by column
+    profile["missing_by_column"] = (
+        df.isnull().sum().to_dict()
+    )
+
+    return profile
+
+
+def generate_numeric_analysis(df):
+
+    numeric_columns = df.select_dtypes(
+        include="number"
+    ).columns.tolist()
+
+    if not numeric_columns:
+        return pd.DataFrame()
+
+    analysis = df[numeric_columns].describe().T
+
+    analysis = analysis.rename(columns={
+        "count": "Count",
+        "mean": "Mean",
+        "std": "Standard Deviation",
+        "min": "Minimum",
+        "25%": "25th Percentile",
+        "50%": "Median",
+        "75%": "75th Percentile",
+        "max": "Maximum"
+    })
+
+    return analysis.round(2)
+
+
+
+# --------------------------------------------------
 # 2. LOAD DATASET
 # --------------------------------------------------
 
@@ -243,37 +513,6 @@ def clean_data(df):
     return df, quality_report
 
 
-# --------------------------------------------------
-# 4. CALCULATE BUSINESS KPIs
-# --------------------------------------------------
-
-def calculate_kpis(df):
-
-    total_revenue = df["revenue"].sum()
-    total_profit = df["profit"].sum()
-    total_orders = df["order_id"].nunique()
-    total_units = df["quantity"].sum()
-
-    average_order_value = (
-        total_revenue / total_orders
-        if total_orders > 0 else 0
-    )
-
-    profit_margin = (
-        (total_profit / total_revenue) * 100
-        if total_revenue > 0 else 0
-    )
-
-    kpis = {
-        "Total Revenue": total_revenue,
-        "Total Profit": total_profit,
-        "Total Orders": total_orders,
-        "Units Sold": total_units,
-        "Average Order Value": average_order_value,
-        "Profit Margin": profit_margin
-    }
-
-    return kpis
 
 # --------------------------------------------------
 # 5. GENERATE BUSINESS ANALYTICS
@@ -347,6 +586,113 @@ def generate_analytics(df):
         "category": category,
         "sales_rep": sales_rep
     }
+
+
+
+def generate_business_insights(df, analytics):
+
+    insights = []
+
+    # Overall business performance
+    total_revenue = df["revenue"].sum()
+    total_profit = df["profit"].sum()
+
+    if total_revenue > 0:
+        profit_margin = (total_profit / total_revenue) * 100
+    else:
+        profit_margin = 0
+
+    insights.append(
+        f"Total revenue is ₹{total_revenue:,.2f} "
+        f"with a profit of ₹{total_profit:,.2f} "
+        f"and a profit margin of {profit_margin:.2f}%."
+    )
+
+    # Monthly performance comparison
+    monthly = analytics["monthly"]
+
+    if len(monthly) >= 2:
+
+        latest_month = monthly.iloc[-1]
+        previous_month = monthly.iloc[-2]
+
+        previous_revenue = previous_month["revenue"]
+        latest_revenue = latest_month["revenue"]
+
+        if previous_revenue > 0:
+            revenue_change = (
+                (latest_revenue - previous_revenue)
+                / previous_revenue
+            ) * 100
+
+            if revenue_change > 0:
+                insights.append(
+                    f"Revenue increased by {revenue_change:.2f}% "
+                    f"in {latest_month['month']} compared to "
+                    f"{previous_month['month']}."
+                )
+
+            elif revenue_change < 0:
+                insights.append(
+                    f"Revenue decreased by {abs(revenue_change):.2f}% "
+                    f"in {latest_month['month']} compared to "
+                    f"{previous_month['month']}."
+                )
+
+            else:
+                insights.append(
+                    "Revenue remained unchanged compared "
+                    "to the previous month."
+                )
+
+    # Best-performing product
+    product = analytics["product"]
+
+    if not product.empty:
+
+        best_product = product.iloc[0]
+
+        insights.append(
+            f"{best_product['product']} is the top-performing "
+            f"product, generating ₹{best_product['revenue']:,.2f} "
+            f"in revenue."
+        )
+
+    # Best-performing region
+    region = analytics["region"]
+
+    if not region.empty:
+
+        best_region = region.iloc[0]
+
+        insights.append(
+            f"{best_region['region']} is the highest-revenue "
+            f"region, generating ₹{best_region['revenue']:,.2f}."
+        )
+
+    # Lowest profit-margin product
+    if not product.empty:
+
+        product_analysis = product.copy()
+
+        product_analysis["profit_margin"] = (
+            product_analysis["profit"]
+            / product_analysis["revenue"].replace(0, 1)
+        ) * 100
+
+        lowest_margin_product = product_analysis.loc[
+            product_analysis["profit_margin"].idxmin()
+        ]
+
+        insights.append(
+            f"{lowest_margin_product['product']} has the lowest "
+            f"profit margin at "
+            f"{lowest_margin_product['profit_margin']:.2f}%. "
+            f"Consider reviewing its pricing or costs."
+        )
+
+    return insights
+
 
 
 # --------------------------------------------------
@@ -867,13 +1213,189 @@ def apply_dashboard_filters(df):
 def main():
 
     st.set_page_config(
-        page_title="Automated Business Reporting",
-        page_icon="📊",
-        layout="wide"
-    )
+    page_title="StatIQ | Business Analytics",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-    st.title("Automated Business Reporting System")
-    st.caption("Business analytics and automated reporting dashboard")
+
+
+    # StatIQ Professional Styling
+
+    st.markdown("""
+        <style>
+
+        /* Main application background */
+        .stApp {
+            background-color: #F7F8FA;
+            color: #263445;
+        }
+
+        /* Main content spacing */
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 3rem;
+            max-width: 1450px;
+        }
+
+        /* Sidebar */
+        [data-testid="stSidebar"] {
+            background-color: #172536;
+        }
+
+        [data-testid="stSidebar"] * {
+            color: #F1F5F9;
+        }
+
+        /* Main headings */
+        h1, h2, h3 {
+            color: #172536;
+            font-weight: 600;
+        }
+
+        /* Metric cards */
+        [data-testid="stMetric"] {
+            background-color: #FFFFFF;
+            border: 1px solid #E5E9EF;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        [data-testid="stMetricLabel"] {
+            color: #64748B;
+        }
+
+        [data-testid="stMetricValue"] {
+            color: #172536;
+        }
+
+        /* Buttons */
+        .stButton > button,
+        .stDownloadButton > button {
+            background-color: #527CA5;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 0.5rem 1rem;
+        }
+
+        .stButton > button:hover,
+        .stDownloadButton > button:hover {
+            background-color: #3F6489;
+            color: white;
+        }
+
+        /* Dataframes */
+        [data-testid="stDataFrame"] {
+            border: 1px solid #E5E9EF;
+            border-radius: 6px;
+        }
+
+        /* Dividers */
+        hr {
+            border-color: #E5E9EF;
+        }
+
+                /* Improve overall text contrast */
+        .stApp {
+            color: #263445;
+        }
+
+        /* Headings */
+        h1, h2, h3, h4 {
+            color: #172536 !important;
+        }
+
+        /* Labels above input fields */
+        .stTextInput label,
+        .stNumberInput label,
+        .stSelectbox label,
+        .stMultiSelect label,
+        .stDateInput label,
+        .stFileUploader label,
+        .stRadio label,
+        .stCheckbox label {
+            color: #263445 !important;
+            font-weight: 600 !important;
+        }
+
+        /* Dropdown selected values */
+        .stSelectbox div[data-baseweb="select"] span {
+            color: #263445 !important;
+        }
+
+        /* General text and captions */
+        .stMarkdown p,
+        .stCaption,
+        [data-testid="stCaptionContainer"] {
+            color: #475569 !important;
+        }
+
+        /* Sidebar text */
+        [data-testid="stSidebar"] * {
+        color: #F1F5F9 !important;
+        }
+
+
+                /* Light dropdown styling */
+        .stSelectbox div[data-baseweb="select"] > div {
+            background-color: #FFFFFF !important;
+            border: 1px solid #CBD5E1 !important;
+            border-radius: 6px !important;
+        }
+
+        .stSelectbox div[data-baseweb="select"] span {
+            color: #263445 !important;
+        }
+
+        .stSelectbox div[data-baseweb="select"] svg {
+            fill: #64748B !important;
+        }
+
+
+                /* Professional Column Analysis Cards */
+        [data-testid="stVerticalBlockBorderWrapper"] {
+            background-color: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+        }
+
+        /* Column card headings */
+        [data-testid="stVerticalBlockBorderWrapper"] h3 {
+            color: #172536 !important;
+            font-size: 19px;
+            font-weight: 600;
+        }
+
+        /* Column count captions */
+        [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer"] {
+            color: #64748B !important;
+            font-size: 13px;
+        }
+
+        /* Column name tags */
+        [data-testid="stVerticalBlockBorderWrapper"] code {
+            background-color: #EEF2F6;
+            color: #334155;
+            border: 1px solid #E2E8F0;
+            border-radius: 4px;
+            padding: 4px 9px;
+            font-size: 13px;
+        }
+
+
+
+
+        </style>
+    """, unsafe_allow_html=True)
+
+
+
+    st.title("StatIQ | Business Analytics Dashboard")
+    st.caption("From Data to Decisions. | Business Analytics & Reporting")
+
+    
 
     uploaded_files = st.file_uploader(
         "Upload CSV or Excel sales files",
@@ -894,6 +1416,158 @@ def main():
                 ignore_index=True
             )
 
+            # Display universal column mapping interface
+            column_mapping = show_column_mapping(raw_data)
+
+            
+            # Apply selected column mappings
+            mapped_data = apply_column_mapping(
+                raw_data,
+                column_mapping
+            )
+
+            # Automatically detect dataset type
+            dataset_type, classification_scores = detect_dataset_type(
+                mapped_data
+            )
+
+            # Display detected dataset type
+            st.divider()
+
+
+            st.subheader("Dataset Classification")
+
+            st.success(
+                f"Detected Dataset Type: {dataset_type}"
+            )
+
+            with st.expander("View Classification Details"):
+                st.write(classification_scores)
+
+            # Generate dataset profile
+            dataset_profile = generate_dataset_profile(mapped_data)
+
+            # Display Dataset Overview
+            st.divider()
+            st.subheader("Dataset Overview")
+
+            # Basic dataset metrics
+            col1, col2, col3, col4 = st.columns(4)
+
+            col1.metric(
+                "Total Rows",
+                f"{dataset_profile['total_rows']:,}"
+            )
+
+            col2.metric(
+                "Total Columns",
+                f"{dataset_profile['total_columns']:,}"
+            )
+
+            col3.metric(
+                "Duplicate Rows",
+                f"{dataset_profile['duplicate_rows']:,}"
+            )
+
+            col4.metric(
+                "Missing Cells",
+                f"{dataset_profile['missing_cells']:,}"
+            )
+
+            # Display column information
+            st.subheader("Column Analysis")
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                with st.container(border=True):
+                    st.markdown("### Numeric Columns")
+                    st.caption(
+                        f"{len(dataset_profile['numeric_columns'])} columns detected"
+                    )
+
+                    if dataset_profile["numeric_columns"]:
+                        for column in dataset_profile["numeric_columns"]:
+                            st.markdown(
+                                f"`{column}`"
+                            )
+                    else:
+                        st.info("No numeric columns found.")
+
+            with col2:
+                with st.container(border=True):
+                    st.markdown("### Date Columns")
+                    st.caption(
+                        f"{len(dataset_profile['date_columns'])} columns detected"
+                    )
+
+                    if dataset_profile["date_columns"]:
+                        for column in dataset_profile["date_columns"]:
+                            st.markdown(
+                                f"`{column}`"
+                            )
+                    else:
+                        st.info("No date columns found.")
+
+            with col3:
+                with st.container(border=True):
+                    st.markdown("### Categorical Columns")
+                    st.caption(
+                        f"{len(dataset_profile['categorical_columns'])} columns detected"
+                    )
+
+                    if dataset_profile["categorical_columns"]:
+                        for column in dataset_profile["categorical_columns"]:
+                            st.markdown(
+                                f"`{column}`"
+                            )
+                    else:
+                        st.info("No categorical columns found.")
+            # Missing values by column
+            with st.expander("View Missing Values by Column"):
+
+                missing_data = pd.DataFrame({
+                    "Column": list(
+                        dataset_profile["missing_by_column"].keys()
+                    ),
+                    "Missing Values": list(
+                        dataset_profile["missing_by_column"].values()
+                    )
+                })
+
+                st.dataframe(
+                    missing_data,
+                    use_container_width=True
+                )
+
+
+            # ------------------------------------------
+            # UNIVERSAL NUMERICAL ANALYSIS
+            # ------------------------------------------
+
+            st.divider()
+            st.subheader("Numerical Analysis")
+
+            numeric_analysis = generate_numeric_analysis(mapped_data)
+
+            if not numeric_analysis.empty:
+
+                st.write(
+                    "Statistical summary of all numerical columns."
+                )
+
+                st.dataframe(
+                    numeric_analysis,
+                    use_container_width=True
+                )
+
+            else:
+
+                st.info(
+                    "No numerical columns found in this dataset."
+                )
+
+
             
             # Clean data
             cleaned_data, quality = clean_data(raw_data)
@@ -912,6 +1586,20 @@ def main():
             # Generate analytics using filtered data
             analytics = generate_analytics(filtered_data)
 
+
+            # AI-Powered Business Insights
+            st.subheader("🤖 AI-Powered Business Insights")
+
+            business_insights = generate_business_insights(
+                filtered_data,
+                analytics
+            )
+
+            for insight in business_insights:
+                st.info(f"💡 {insight}")
+
+
+
             # Display dashboard using filtered data
             show_dashboard(
                 filtered_data,
@@ -920,9 +1608,61 @@ def main():
             )
 
 
-            # Display data quality
+                        # Display Data Quality Report
+            st.divider()
             st.subheader("Data Quality Report")
-            st.json(quality)
+            st.caption("Summary of data cleaning and validation results.")
+
+            # Data quality metrics
+            col1, col2, col3, col4 = st.columns(4)
+
+            col1.metric(
+                "Original Rows",
+                f"{quality['original_rows']:,}"
+            )
+
+            col2.metric(
+                "Final Rows",
+                f"{quality['final_rows']:,}"
+            )
+
+            col3.metric(
+                "Duplicates Removed",
+                f"{quality['duplicates_removed']:,}"
+            )
+
+            col4.metric(
+                "Total Rows Removed",
+                f"{quality['total_rows_removed']:,}"
+            )
+
+            # Detailed cleaning report
+            st.markdown("#### Cleaning Summary")
+
+            quality_labels = {
+                "original_rows": "Original Rows",
+                "final_rows": "Final Rows",
+                "duplicates_removed": "Duplicate Rows Removed",
+                "missing_rows_removed": "Rows with Missing Values Removed",
+                "invalid_rows_removed": "Invalid Rows Removed",
+                "total_rows_removed": "Total Rows Removed"
+            }
+
+            quality_table = pd.DataFrame({
+                "Data Quality Check": [
+                    quality_labels[key] for key in quality
+                ],
+                "Records": [
+                    f"{value:,}" for value in quality.values()
+                ]
+            })
+
+            st.dataframe(
+                quality_table,
+                use_container_width=True,
+                hide_index=True
+            )
+           
 
             # Download Excel report
             excel_file = create_excel_report(
@@ -944,6 +1684,7 @@ def main():
 
     else:
         st.info("Upload one or more CSV or Excel files to generate your dashboard.")
+
 
 
 # Run application
